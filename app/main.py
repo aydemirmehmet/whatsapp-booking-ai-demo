@@ -1,4 +1,4 @@
-"""FastAPI app: WhatsApp webhook + browser simulator for demos."""
+"""FastAPI app: WhatsApp webhook, Twilio voice webhook and a browser simulator."""
 from __future__ import annotations
 
 import asyncio
@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -18,11 +18,19 @@ from .config import settings
 from .db import Appointment, Conversation, Lead, Slot, make_session_factory
 from .seed import ensure_seeded, reset_and_seed
 from .service import process_inbound, run_reminders
-from .whatsapp import CloudAPISender, Inbound, MemorySender, parse_webhook, verify_signature
+from .voice import TwilioSMSSender, call_key, handle_call, to_twiml, verify_twilio_signature
+from .whatsapp import CloudAPISender, Inbound, MemorySender, Reply, parse_webhook, verify_signature
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 log = logging.getLogger("app")
 STATIC = Path(__file__).parent / "static"
+
+
+class VoiceIn(BaseModel):
+    call_id: str
+    phone: str = "905551112233"
+    text: str | None = None
+    silence: bool = False
 
 
 class SendIn(BaseModel):
@@ -47,6 +55,10 @@ def create_app(database_url: str | None = None, live_sender=None) -> FastAPI:
         live_sender = (CloudAPISender(settings.access_token, settings.phone_number_id,
                                       settings.graph_version, settings.template_lang)
                        if settings.cloud_api_enabled else MemorySender())
+
+    sms_sender = (TwilioSMSSender(settings.twilio_account_sid, settings.twilio_auth_token,
+                                  settings.twilio_from_number)
+                  if settings.twilio_account_sid and settings.twilio_from_number else MemorySender())
 
     async def reminder_loop():
         while True:
@@ -93,6 +105,24 @@ def create_app(database_url: str | None = None, live_sender=None) -> FastAPI:
         background.add_task(work)  # answer Meta within its timeout, process after
         return {"received": len(messages)}
 
+    # ---------- Twilio voice webhook ----------
+
+    @app.post("/voice")
+    async def voice(request: Request):
+        form = dict(await request.form())
+        url = (settings.public_base_url.rstrip("/") + request.url.path + (
+            "?" + request.url.query if request.url.query else "")) if settings.public_base_url else str(request.url)
+        if not verify_twilio_signature(settings.twilio_auth_token, url, form,
+                                       request.headers.get("X-Twilio-Signature")):
+            raise HTTPException(403, "bad signature")
+        with Session() as s:
+            turn = handle_call(s, call_key(form.get("CallSid", "local")), form.get("From", ""),
+                               form.get("SpeechResult") or form.get("Digits"),
+                               silence=request.query_params.get("silence") == "1")
+        for text in turn.sms:
+            sms_sender.send(form.get("From", ""), Reply(text))
+        return Response(to_twiml(turn), media_type="application/xml")
+
     @app.post("/admin/release/{phone}")
     def release(phone: str):
         """Staff finished: hand the chat back to the bot."""
@@ -121,6 +151,13 @@ def create_app(database_url: str | None = None, live_sender=None) -> FastAPI:
                 s, Inbound(wamid=f"demo-{uuid.uuid4()}", phone=body.phone, name=body.name,
                            text=body.text), sender, mode=body.mode)
         return {"replies": _serialize(replies), "state": _state(body.phone)}
+
+    @app.post("/demo/api/voice")
+    def demo_voice(body: VoiceIn):
+        with Session() as s:
+            turn = handle_call(s, call_key(body.call_id), body.phone, body.text, silence=body.silence)
+        return {"say": turn.say, "hangup": turn.hangup, "transfer_to": turn.transfer_to,
+                "sms": turn.sms, "twiml": to_twiml(turn), "state": _state(body.phone)}
 
     @app.post("/demo/api/reset")
     def demo_reset():

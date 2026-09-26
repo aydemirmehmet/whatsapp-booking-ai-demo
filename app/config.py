@@ -28,6 +28,13 @@ class Settings:
     openai_api_key: str = field(default_factory=lambda: _env("OPENAI_API_KEY"))
     openai_model: str = field(default_factory=lambda: _env("OPENAI_MODEL", "gpt-4o-mini"))
 
+    # Voice agent (Twilio Programmable Voice)
+    twilio_account_sid: str = field(default_factory=lambda: _env("TWILIO_ACCOUNT_SID"))
+    twilio_auth_token: str = field(default_factory=lambda: _env("TWILIO_AUTH_TOKEN"))
+    twilio_from_number: str = field(default_factory=lambda: _env("TWILIO_FROM_NUMBER"))
+    clinic_transfer_number: str = field(default_factory=lambda: _env("CLINIC_TRANSFER_NUMBER"))
+    public_base_url: str = field(default_factory=lambda: _env("PUBLIC_BASE_URL"))
+
     # CRM
     crm_webhook_url: str = field(default_factory=lambda: _env("CRM_WEBHOOK_URL"))
 
