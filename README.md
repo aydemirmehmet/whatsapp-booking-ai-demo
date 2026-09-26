@@ -1,17 +1,23 @@
-# WhatsApp Automation Demos (Python / FastAPI)
+# WhatsApp & Voice Booking Automation (Python / FastAPI)
 
 ![tests](https://github.com/aydemirmehmet/whatsapp-booking-ai-demo/actions/workflows/tests.yml/badge.svg)
 
-Two production-style WhatsApp Business API bots on one backend, plus a browser
-simulator so anyone can try them without a Meta account.
+Three production-style assistants for clinics and other appointment businesses,
+sharing one booking engine: two WhatsApp Business API bots and an AI voice
+receptionist on the phone (Twilio). A browser simulator lets anyone try all
+three without a Meta or Twilio account.
+
+🎬 **1-minute walkthrough:** [docs/demo-walkthrough.mp4](docs/demo-walkthrough.mp4)
 
 | Demo | What it shows |
 |---|---|
 | **1. Clinic booking bot** | Menu/button flow: pick doctor → pick time → confirm. Slot hold while the patient decides, **no double bookings** (DB unique constraint), cancel & reschedule in chat, **24h and 2h reminders** via approved templates, human handover. |
 | **2. AI receptionist** | LLM agent (OpenAI tool calling) that answers from the clinic's real data, qualifies the lead one question at a time, books through the same booking engine, **syncs the lead to a CRM** and hands over to staff when needed. Runs in an offline rule-based mode when no API key is set. |
+| **3. Voice agent (phone)** | Caller rings the clinic number; Twilio speech recognition + TwiML. The agent offers 3 free times, books through the same engine, **texts an SMS confirmation**, cancels existing appointments and **transfers to reception** when asked or when it can't understand twice. Twilio request signatures are verified. |
 
 ![Booking bot](docs/demo1-booking.png)
 ![AI receptionist](docs/demo2-ai-receptionist.png)
+![Voice agent](docs/demo3-voice-agent.png)
 
 ## Run it locally (2 minutes)
 
@@ -34,6 +40,18 @@ Set `OPENAI_API_KEY` to switch Demo 2 from offline mode to the real AI agent.
    `https://your-domain/webhook` with your `WA_VERIFY_TOKEN`; subscribe to `messages`.
 5. Create and get approved a utility template `appointment_reminder` with body
    params `{{1}}` name, `{{2}}` time, `{{3}}` doctor.
+
+## Connect a real phone number (voice agent)
+
+1. Buy a voice-capable number in Twilio.
+2. Set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`,
+   `PUBLIC_BASE_URL` (used for signature checks) and optionally
+   `CLINIC_TRANSFER_NUMBER` in `.env`.
+3. In the number's settings, set *A call comes in* → Webhook →
+   `https://your-domain/voice` (HTTP POST).
+
+The same `/voice` logic can sit behind Vapi or Retell if you prefer their
+voices; the booking engine and CRM sync stay the same.
 
 ## Architecture
 
@@ -69,9 +87,11 @@ Reliability details that usually break in WhatsApp projects:
 pytest -q
 ```
 
-16 tests: signature validation, webhook parsing, idempotent delivery, full booking
-flow, double-booking protection, slot holds, reschedule/cancel, reminder timing,
-human handover, AI agent tool use with a fake LLM client, offline mode.
+24 tests: WhatsApp and Twilio signature validation, webhook parsing, idempotent
+delivery, full booking flow, double-booking protection, slot holds,
+reschedule/cancel, reminder timing, human handover, AI agent tool use with a fake
+LLM client, offline mode, phone booking with SMS confirmation, phone cancel and
+transfer, TwiML output.
 
 ## Project layout
 
@@ -82,6 +102,7 @@ app/
   service.py       inbound pipeline + reminder job
   booking_flow.py  Demo 1 state machine
   ai_agent.py      Demo 2 LLM agent + offline mode
+  voice.py         Demo 3 phone agent: TwiML, Twilio signatures, SMS confirmation
   scheduling.py    slots, holds, booking, cancel
   crm.py           lead upsert + CRM webhook
   db.py, seed.py   models and demo data
