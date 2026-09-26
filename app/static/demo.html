@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WhatsApp Automation Demo</title>
+<style>
+  :root{
+    --bg:#0f1714; --panel:#17221f; --line:#2a3a35; --text:#e9efed; --muted:#92a39e;
+    --green:#25d366; --chat:#0b141a; --in:#202c33; --out:#005c4b; --head:#202c33;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  header{padding:20px 24px 8px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;max-width:1180px;margin:auto}
+  h1{font-size:20px;margin:0}
+  h1 small{display:block;color:var(--muted);font-weight:400;font-size:13px}
+  .seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:3px}
+  .seg button{border:0;background:transparent;color:var(--muted);padding:7px 14px;border-radius:999px;cursor:pointer;font:inherit}
+  .seg button.on{background:var(--green);color:#062b17;font-weight:600}
+  main{display:grid;grid-template-columns:minmax(300px,420px) 1fr;gap:24px;padding:12px 24px 32px;max-width:1180px;margin:auto}
+  @media (max-width:820px){main{grid-template-columns:1fr;padding:12px 16px}}
+  .phone{background:var(--chat);border:1px solid var(--line);border-radius:28px;overflow:hidden;display:flex;flex-direction:column;height:min(760px,82vh)}
+  .top{background:var(--head);padding:12px 16px;display:flex;gap:12px;align-items:center}
+  .avatar{width:38px;height:38px;border-radius:50%;background:var(--green);display:grid;place-items:center;color:#062b17;font-weight:700}
+  .top b{display:block}.top span{color:var(--muted);font-size:12px}
+  #log{flex:1;overflow-y:auto;padding:14px 12px;display:flex;flex-direction:column;gap:8px}
+  .msg{max-width:82%;padding:8px 11px 6px;border-radius:10px;white-space:pre-wrap;word-wrap:break-word;font-size:14.5px}
+  .in{align-self:flex-start;background:var(--in);border-top-left-radius:2px}
+  .out{align-self:flex-end;background:var(--out);border-top-right-radius:2px}
+  .tpl{border-left:3px solid var(--green)}
+  .tag{display:block;font-size:11px;color:#8fe3b5;margin-bottom:3px}
+  .opts{align-self:flex-start;display:flex;flex-direction:column;gap:5px;max-width:82%;width:82%}
+  .opts button{background:var(--in);color:#53bdeb;border:0;border-radius:8px;padding:9px;cursor:pointer;font:inherit;text-align:center}
+  .opts button small{display:block;color:var(--muted);font-size:11.5px}
+  .opts button:disabled{opacity:.45;cursor:default}
+  .sys{align-self:center;background:#182229;color:var(--muted);font-size:12px;padding:4px 10px;border-radius:8px}
+  form{display:flex;gap:8px;padding:10px;background:var(--head)}
+  input{flex:1;border:0;border-radius:20px;padding:11px 14px;background:#2a3942;color:var(--text);font:inherit;min-width:0}
+  .send{border:0;border-radius:50%;width:44px;background:var(--green);color:#062b17;font-weight:700;cursor:pointer}
+  .side{display:flex;flex-direction:column;gap:16px;min-width:0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px 18px}
+  .card h2{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--green);margin:0 0 10px}
+  .row{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--line)}
+  .row:last-child{border:0}.row span{color:var(--muted)}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;background:#113d27;color:#8fe3b5;font-size:12px}
+  .empty{color:var(--muted)}
+  .btns{display:flex;flex-wrap:wrap;gap:8px}
+  .btns button,.chips button{border:1px solid var(--line);background:transparent;color:var(--text);padding:8px 12px;border-radius:10px;cursor:pointer;font:inherit;font-size:13.5px}
+  .btns button:hover,.chips button:hover{border-color:var(--green)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .note{color:var(--muted);font-size:13px;margin:8px 0 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>WhatsApp Automation Demo<small>Same backend as the live WhatsApp webhook · Python / FastAPI</small></h1>
+  <div class="seg" role="tablist">
+    <button id="m-booking" class="on" onclick="setMode('booking')">Demo 1 · Booking bot</button>
+    <button id="m-ai" onclick="setMode('ai')">Demo 2 · AI receptionist</button>
+  </div>
+</header>
+<main>
+  <section class="phone" aria-label="WhatsApp chat">
+    <div class="top"><div class="avatar">S</div><div><b id="clinic">Smile Dental Clinic</b><span id="sub">Business account</span></div></div>
+    <div id="log"></div>
+    <form id="f"><input id="t" placeholder="Type a message" autocomplete="off"><button class="send" aria-label="Send">➤</button></form>
+  </section>
+  <section class="side">
+    <div class="card">
+      <h2>Try saying</h2>
+      <div class="chips" id="chips"></div>
+    </div>
+    <div class="card">
+      <h2>Appointments (database)</h2>
+      <div id="appts" class="empty">None yet</div>
+    </div>
+    <div class="card">
+      <h2>CRM lead</h2>
+      <div id="lead" class="empty">No lead yet</div>
+    </div>
+    <div class="card">
+      <h2>Controls</h2>
+      <div class="btns">
+        <button onclick="fastForward(23)">⏩ Jump to 23h before visit → run reminders</button>
+        <button onclick="fastForward(1.5)">⏩ Jump to 1.5h before visit</button>
+        <button onclick="reset()">↺ Reset demo data</button>
+      </div>
+      <p class="note" id="conv"></p>
+    </div>
+  </section>
+</main>
+<script>
+const PHONE = "905551112233", NAME = "Ayse Demir";
+let mode = "booking";
+const CHIPS = {
+  booking: ["Hi", "1", "My appointments", "I want to talk to a person", "menu"],
+  ai: ["How much is teeth whitening?", "What are your opening hours?", "Yes, find a time", "Can I speak to someone?"]
+};
+const $ = id => document.getElementById(id);
+const log = $("log");
+
+function add(cls, text, tag){
+  const d = document.createElement("div");
+  d.className = "msg " + cls + (tag ? " tpl" : "");
+  if (tag){ const s = document.createElement("span"); s.className="tag"; s.textContent = tag; d.appendChild(s); }
+  d.appendChild(document.createTextNode(text.replace(/\*(.+?)\*/g, "$1")));
+  log.appendChild(d); log.scrollTop = log.scrollHeight;
+}
+function sys(text){ const d=document.createElement("div"); d.className="sys"; d.textContent=text; log.appendChild(d); log.scrollTop=log.scrollHeight; }
+function options(opts){
+  if (!opts.length) return;
+  const box = document.createElement("div"); box.className = "opts";
+  opts.forEach(o => {
+    const b = document.createElement("button");
+    b.textContent = o.title;
+    if (o.description){ const s=document.createElement("small"); s.textContent=o.description; b.appendChild(s); }
+    b.onclick = () => { box.querySelectorAll("button").forEach(x=>x.disabled=true); send(o.id, o.title); };
+    box.appendChild(b);
+  });
+  log.appendChild(box); log.scrollTop = log.scrollHeight;
+}
+function render(replies){
+  replies.forEach(r => { add("in", r.text, r.template ? "Template: " + r.template : ""); options(r.options); });
+}
+function renderState(st){
+  if (!st) return;
+  $("appts").className = st.appointments.length ? "" : "empty";
+  $("appts").innerHTML = st.appointments.length ? st.appointments.map(a =>
+    `<div class="row"><div>${a.time}<br><span>${a.doctor}</span></div><div>${a.reminded_2h ? '<span class="pill">2h ✓</span> ' : ''}${a.reminded_24h ? '<span class="pill">24h ✓</span>' : ''}</div></div>`).join("") : "None yet";
+  const l = st.lead;
+  $("lead").className = l ? "" : "empty";
+  $("lead").innerHTML = l ? [["Name", l.name || "–"], ["Interest", l.interest || "–"], ["Status", `<span class="pill">${l.status}</span>`], ["Summary", l.summary || "–"]]
+      .map(([k,v]) => `<div class="row"><span>${k}</span><div>${v}</div></div>`).join("") : "No lead yet";
+  const c = st.conversation;
+  $("conv").textContent = (c ? `Conversation state: ${c.state}${c.human_mode ? " · handed to staff (bot silent)" : ""}. ` : "")
+    + (mode === "ai" ? (st.ai_enabled ? "AI mode: OpenAI tool-calling agent." : "AI mode running offline (no OPENAI_API_KEY): rule-based answers.") : "");
+}
+async function send(text, shown){
+  add("out", shown || text);
+  const r = await fetch("/demo/api/send", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({phone: PHONE, name: NAME, text, mode})});
+  const j = await r.json();
+  if (!j.replies.length) sys("No bot reply (chat is with staff). Type menu to return to the bot.");
+  render(j.replies); renderState(j.state);
+}
+async function fastForward(h){
+  const r = await fetch(`/demo/api/fast-forward?phone=${PHONE}&hours_before=${h}`, {method:"POST"});
+  const j = await r.json();
+  if (j.note){ sys(j.note); return; }
+  sys(`Clock set to ${j.simulated_time.replace("T"," ")} · reminder job ran`);
+  if (!j.replies.length) sys("Nothing due (already reminded)");
+  render(j.replies); renderState(j.state);
+}
+async function reset(){
+  await fetch("/demo/api/reset", {method:"POST"});
+  log.innerHTML = ""; sys("Demo data reset"); refresh();
+}
+function setMode(m){
+  mode = m;
+  $("m-booking").classList.toggle("on", m==="booking");
+  $("m-ai").classList.toggle("on", m==="ai");
+  $("chips").innerHTML = "";
+  CHIPS[m].forEach(c => { const b=document.createElement("button"); b.textContent=c; b.onclick=()=>send(c); $("chips").appendChild(b); });
+  sys(m === "ai" ? "Demo 2 · AI receptionist" : "Demo 1 · Booking bot");
+  refresh();
+}
+async function refresh(){ renderState(await (await fetch(`/demo/api/state?phone=${PHONE}`)).json()); }
+$("f").onsubmit = e => { e.preventDefault(); const v=$("t").value.trim(); if(v){ $("t").value=""; send(v); } };
+setMode("booking");
+</script>
+</body>
+</html>
